@@ -213,6 +213,14 @@
     - id: ui-brand-official
       name: '@deepseek-ai/dsh-client-ui-brand-official'
 
+    # Zhizhi brand occupants — replace dsh-default official brand when the
+    # DSH_CLIENT_BUILD_PROFILE=zhizhi build profile is active. The runtime
+    # guard in @deepseek-ai/dsh-client-ui-brand-zhizhi/src/client/index.ts
+    # skips registration under any other profile, so this row stays
+    # declaration-only.
+    - id: ui-brand-zhizhi
+      name: '@deepseek-ai/dsh-client-ui-brand-zhizhi'
+
     - id: ui-attachment
       name: '@deepseek-ai/dsh-client-ui-attachment'
 

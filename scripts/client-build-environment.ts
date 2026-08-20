@@ -22,6 +22,23 @@ const OFFICIAL_CLIENT_BUILD_ENVIRONMENT = {
   DSH_CLIENT_TITLE: 'DeepSeek Harness',
 } as const
 
+/**
+ * Public client environment for the zhizhi (知之 · 赛博女儿) build profile.
+ *
+ * Selects the @deepseek-ai/dsh-client-ui-brand-zhizhi browser brand by setting
+ * DSH_CLIENT_BUILD_PROFILE=zhizhi; the brand-zhizhi apply guards on this
+ * value, so the dsh-default official brand stays un-registered in this
+ * profile. The `DSH_CLIENT_TITLE` value is inlined by Vite/tsdown and shows
+ * in the browser document title.
+ */
+const ZHIZHI_CLIENT_BUILD_ENVIRONMENT = {
+  DSH_CLIENT_BUILD_PROFILE: 'zhizhi',
+  DSH_CLIENT_TITLE: '知之 · 赛博女儿',
+} as const
+
+const KNOWN_CLIENT_BUILD_PROFILES = ['official', 'zhizhi'] as const
+type KnownClientBuildProfile = typeof KNOWN_CLIENT_BUILD_PROFILES[number]
+
 /** Public variable carrying the source commit embedded in client artifacts. */
 const CLIENT_COMMIT_HASH_VARIABLE = 'DSH_CLIENT_COMMIT_HASH'
 
@@ -58,6 +75,40 @@ export function repositoryCommitHash(root: string, environment: NodeJS.ProcessEn
 }
 
 /**
+ * Resolve the exact public environment required by a named client build.
+ * The built source must match the HEAD of `root`; an explicit
+ * `CLIENT_COMMIT_HASH_VARIABLE` whose value differs from `git rev-parse HEAD`
+ * is rejected to keep the build digest in lockstep with the source it was
+ * built from.
+ * @param root - repository root whose HEAD must match the built source.
+ * @param profile - explicit profile name to resolve.
+ * @param environment - environment that may already carry a commit value.
+ * @returns complete client environment for the named profile.
+ */
+export function namedClientBuildEnvironment(
+  root: string,
+  profile: KnownClientBuildProfile,
+  environment: NodeJS.ProcessEnv = process.env,
+): Readonly<Record<`DSH_CLIENT_${string}`, string>> {
+  const commitHash = environment[CLIENT_COMMIT_HASH_VARIABLE]
+  if (commitHash === undefined) {
+    throw new Error(`${CLIENT_COMMIT_HASH_VARIABLE} is required for the ${profile} client build profile`)
+  }
+  const head = execFileSync('git', ['rev-parse', 'HEAD'], {
+    cwd: root,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'ignore'],
+  }).trim()
+  if (head !== commitHash) {
+    throw new Error(`${CLIENT_COMMIT_HASH_VARIABLE}=${commitHash} does not match ${root} HEAD ${head}; built source and commit must agree`)
+  }
+  const base = profile === 'official'
+    ? OFFICIAL_CLIENT_BUILD_ENVIRONMENT
+    : ZHIZHI_CLIENT_BUILD_ENVIRONMENT
+  return { DSH_CLIENT_COMMIT_HASH: commitHash, ...base }
+}
+
+/**
  * Resolve the exact public values required by an official build at one commit.
  * @param root - repository root whose HEAD must match the built source.
  * @param environment - optional explicit commit source for non-Git build environments.
@@ -67,10 +118,7 @@ export function officialClientBuildEnvironment(
   root: string,
   environment: NodeJS.ProcessEnv = process.env,
 ): Readonly<Record<`DSH_CLIENT_${string}`, string>> {
-  return {
-    DSH_CLIENT_COMMIT_HASH: repositoryCommitHash(root, environment),
-    ...OFFICIAL_CLIENT_BUILD_ENVIRONMENT,
-  }
+  return namedClientBuildEnvironment(root, 'official', environment)
 }
 
 /** Digest of every client artifact produced by the complete root build. */
@@ -120,7 +168,14 @@ export function resolveClientBuildEnvironment(
     }
     return { DSH_CLIENT_COMMIT_HASH: commitHash, ...OFFICIAL_CLIENT_BUILD_ENVIRONMENT }
   }
-  throw new Error(`unknown client build profile ${JSON.stringify(profile)}; expected "official"`)
+  if (profile === 'zhizhi') {
+    const commitHash = environment[CLIENT_COMMIT_HASH_VARIABLE]
+    if (commitHash === undefined) {
+      throw new Error(`${CLIENT_COMMIT_HASH_VARIABLE} is required for the zhizhi client build profile`)
+    }
+    return { DSH_CLIENT_COMMIT_HASH: commitHash, ...ZHIZHI_CLIENT_BUILD_ENVIRONMENT }
+  }
+  throw new Error(`unknown client build profile ${JSON.stringify(profile)}; expected one of ${KNOWN_CLIENT_BUILD_PROFILES.map(name => JSON.stringify(name)).join(', ')}`)
 }
 
 /**
